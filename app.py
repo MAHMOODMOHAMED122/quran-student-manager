@@ -1,322 +1,142 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
 import json
 import os
 from datetime import datetime
+import pandas as pd
 
-app = Flask(__name__)
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="نظام إدارة حلقة القرآن", layout="wide")
 
-class QuranSchoolManager:
-    """Manages Quran school student records and progress."""
-    
-    def __init__(self, filename='students_data.json'):
-        self.filename = filename
-        self.students = self.load_data()
-        self.total_parts = 30
-    
-    def load_data(self):
-        """Load students data from JSON file."""
-        if os.path.exists(self.filename):
-            try:
-                with open(self.filename, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
-    
-    def save_data(self):
-        """Save students data to JSON file."""
-        with open(self.filename, 'w', encoding='utf-8') as f:
-            json.dump(self.students, f, indent=2, ensure_ascii=False)
-    
-    def add_student(self, name, total_parts=30):
-        """Add a new student to the system."""
-        if name.lower() in [s.lower() for s in self.students]:
-            return False, f"❌ Student '{name}' already exists!"
-        
-        self.students[name] = {
-            'total_parts': total_parts,
-            'current_part': 0,
-            'attendance': [],
-            'notes': [],
-            'role': 'Student',
-            'date_added': datetime.now().isoformat()
-        }
-        self.save_data()
-        return True, f"✅ Student '{name}' added successfully!"
-    
-    def mark_attendance(self, name, date=None):
-        """Mark student attendance."""
-        student = self._find_student(name)
-        if not student:
-            return False, f"❌ Student '{name}' not found."
-        
-        if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
-        
-        if date in student['attendance']:
-            return False, f"⚠️ {name} already marked present on {date}"
-        
-        student['attendance'].append(date)
-        self.save_data()
-        return True, f"✅ {name} marked present on {date}"
-    
-    def update_progress(self, name, new_part):
-        """Update student's current part and check for role upgrade."""
-        student = self._find_student(name)
-        if not student:
-            return False, f"❌ Student '{name}' not found."
-        
+# --- دالة إدارة البيانات (JSON) ---
+FILENAME = 'students_data.json'
+
+def load_data():
+    if os.path.exists(FILENAME):
         try:
-            new_part = int(new_part)
+            with open(FILENAME, 'r', encoding='utf-8') as f:
+                return json.load(f)
         except:
-            return False, "❌ Invalid part number."
+            return {}
+    return {}
+
+def save_data(data):
+    with open(FILENAME, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+# تحميل البيانات في ذاكرة التطبيق
+if 'students' not in st.session_state:
+    st.session_state.students = load_data()
+
+students = st.session_state.students
+
+# --- واجهة التطبيق ---
+st.title("🕋 نظام إدارة طلاب حلقة القرآن")
+
+# القائمة الجانبية
+menu = ["📊 لوحة التحكم", "📝 تسجيل الحضور والإنجاز", "➕ إضافة طالب", "⚙️ إدارة المسؤوليات"]
+choice = st.sidebar.selectbox("القائمة الرئيسية", menu)
+
+# --- 1. لوحة التحكم ---
+if choice == "📊 لوحة التحكم":
+    st.subheader("📊 إحصائيات عامة")
+    if students:
+        total_students = len(students)
+        completed = sum(1 for s in students.values() if s['current_part'] >= 30)
         
-        if new_part < 0 or new_part > student['total_parts']:
-            return False, f"❌ Invalid part number. Must be between 0 and {student['total_parts']}"
+        col1, col2, col3 = st.columns(3)
+        col1.metric("عدد الطلاب", total_students)
+        col2.metric("المختمين", completed)
+        col3.metric("نسبة الإنجاز الجماعي", f"{(completed/total_students)*100:.1f}%" if total_students > 0 else "0%")
+
+        st.markdown("---")
+        st.subheader("📋 قائمة الطلاب")
         
-        old_part = student['current_part']
-        student['current_part'] = new_part
-        
-        message = f"✅ {name}'s progress updated: Part {old_part}→{new_part}/{student['total_parts']}"
-        
-        remaining = student['total_parts'] - new_part
-        if remaining <= 2 and student['role'] == 'Student':
-            student['role'] = 'Junior Assistant'
-            message += f"\n🎉 {name} auto-upgraded to 'Junior Assistant'! (Only {remaining} parts left!)"
-        
-        self.save_data()
-        return True, message
-    
-    def assign_role(self, name, role):
-        """Assign a custom role to student."""
-        student = self._find_student(name)
-        if not student:
-            return False, f"❌ Student '{name}' not found."
-        
-        valid_roles = ['Student', 'Junior Assistant', 'Group Leader', 'Prayer Monitor', 'Recitation Assistant']
-        if role not in valid_roles:
-            return False, f"❌ Invalid role. Choose from: {', '.join(valid_roles)}"
-        
-        old_role = student['role']
-        student['role'] = role
-        self.save_data()
-        return True, f"✅ {name}'s role updated: {old_role} → {role}"
-    
-    def add_note(self, name, note_type, content):
-        """Add a note about student's performance."""
-        student = self._find_student(name)
-        if not student:
-            return False, f"❌ Student '{name}' not found."
-        
-        valid_types = ['Strengths', 'Modification', 'General', 'Attendance', 'Behavior']
-        if note_type not in valid_types:
-            return False, f"❌ Invalid note type. Choose from: {', '.join(valid_types)}"
-        
-        note = {
-            'type': note_type,
-            'content': content,
-            'date': datetime.now().isoformat()
-        }
-        
-        student['notes'].append(note)
-        if len(student['notes']) > 10:
-            student['notes'] = student['notes'][-10:]
-        
-        self.save_data()
-        return True, f"✅ Note added for {name} ({note_type})"
-    
-    def view_profile(self, name):
-        """Get student profile data."""
-        student = self._find_student(name)
-        if not student:
-            return None
-        
-        remaining = student['total_parts'] - student['current_part']
-        progress_pct = (student['current_part'] / student['total_parts']) * 100
-        
-        return {
-            'name': name,
-            'role': student['role'],
-            'current_part': student['current_part'],
-            'total_parts': student['total_parts'],
-            'remaining': remaining,
-            'progress': f"{progress_pct:.1f}",
-            'attendance_count': len(student['attendance']),
-            'date_added': student['date_added'][:10],
-            'attendance': sorted(student['attendance'], reverse=True)[:5],
-            'notes': student['notes'][-10:] if student['notes'] else []
-        }
-    
-    def get_summary(self):
-        """Get summary data for all students."""
-        if not self.students:
-            return []
-        
-        data = []
-        for name, student in sorted(self.students.items()):
-            current = student['current_part']
-            total = student['total_parts']
-            remaining = total - current
-            progress = (current / total) * 100
-            attendance = len(student['attendance'])
-            role = student['role']
-            
-            data.append({
-                'name': name,
-                'current': current,
-                'total': total,
-                'remaining': remaining,
-                'progress': f"{progress:.1f}",
-                'attendance': attendance,
-                'role': role
+        data_list = []
+        for name, info in students.items():
+            data_list.append({
+                "الاسم": name,
+                "الجزء الحالي": info['current_part'],
+                "المتبقي": 30 - info['current_part'],
+                "المسؤولية": info['role'],
+                "عدد أيام الحضور": len(info['attendance'])
             })
         
-        return data
-    
-    def get_statistics(self):
-        """Get overall statistics."""
-        if not self.students:
-            return {
-                'total_students': 0,
-                'avg_progress': 0,
-                'completed': 0,
-                'junior_assistants': 0
-            }
+        df = pd.DataFrame(data_list)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("لا يوجد طلاب مسجلون حالياً. ابدأ بإضافة طالب.")
+
+# --- 2. تسجيل الحضور والإنجاز ---
+elif choice == "📝 تسجيل الحضور والإنجاز":
+    st.subheader("📝 تحديث يومي")
+    if not students:
+        st.warning("يرجى إضافة طلاب أولاً.")
+    else:
+        name = st.selectbox("اختر الطالب", list(students.keys()))
+        col1, col2 = st.columns(2)
         
-        total_students = len(self.students)
-        avg_progress = sum(
-            (s['current_part'] / s['total_parts']) * 100 
-            for s in self.students.values()
-        ) / total_students
-        completed = sum(1 for s in self.students.values() if s['current_part'] >= s['total_parts'])
-        junior_assistants = sum(1 for s in self.students.values() if s['role'] == 'Junior Assistant')
+        with col1:
+            current_part = st.number_input("الجزء الذي وصل إليه", 0, 30, value=students[name]['current_part'])
+            mark_present = st.checkbox("تسجيل حضور اليوم")
         
-        return {
-            'total_students': total_students,
-            'avg_progress': f"{avg_progress:.1f}",
-            'completed': completed,
-            'junior_assistants': junior_assistants
-        }
-    
-    def remove_student(self, name):
-        """Remove student from system."""
-        for key in list(self.students.keys()):
-            if key.lower() == name.lower():
-                del self.students[key]
-                self.save_data()
-                return True, f"✅ Student '{key}' removed successfully."
-        return False, f"❌ Student '{name}' not found."
-    
-    def get_all_students(self):
-        """Get list of all student names."""
-        return sorted(self.students.keys())
-    
-    def _find_student(self, name):
-        """Find student by case-insensitive name."""
-        for key, value in self.students.items():
-            if key.lower() == name.lower():
-                return value
-        return None
+        with col2:
+            note = st.text_area("ملاحظات (نقاط القوة أو التعديلات)")
+        
+        if st.button("حفظ التحديث"):
+            # تحديث الجزء
+            students[name]['current_part'] = current_part
+            # تسجيل الحضور
+            if mark_present:
+                today = datetime.now().strftime('%Y-%m-%d')
+                if today not in students[name]['attendance']:
+                    students[name]['attendance'].append(today)
+            # إضافة الملاحظات
+            if note:
+                students[name]['notes'].append({"date": str(datetime.now()), "content": note})
+            
+            # ترقية تلقائية للمسؤولية
+            remaining = 30 - current_part
+            if remaining <= 2 and students[name]['role'] == 'طالب':
+                students[name]['role'] = 'مساعد مراجع'
+                st.balloons()
+                st.success(f"🎊 تمت ترقية {name} إلى 'مساعد مراجع'!")
+            
+            save_data(students)
+            st.success(f"تم تحديث بيانات {name}")
 
+# --- 3. إضافة طالب ---
+elif choice == "➕ إضافة طالب":
+    st.subheader("➕ إضافة طالب جديد")
+    with st.form("add_student"):
+        new_name = st.text_input("اسم الطالب")
+        start_part = st.number_input("بدأ من الجزء رقم", 0, 30, 0)
+        submit = st.form_submit_button("إضافة الطالب")
+        
+        if submit:
+            if new_name and new_name not in students:
+                students[new_name] = {
+                    'current_part': start_part,
+                    'attendance': [],
+                    'notes': [],
+                    'role': 'طالب'
+                }
+                save_data(students)
+                st.success(f"تمت إضافة {new_name} بنجاح!")
+            else:
+                st.error("الاسم موجود مسبقاً أو غير صالح.")
 
-# Initialize manager
-manager = QuranSchoolManager()
-
-
-@app.route('/')
-def index():
-    """Serve the main page."""
-    return render_template('index.html')
-
-
-@app.route('/api/students', methods=['GET'])
-def get_students():
-    """Get all student names."""
-    return jsonify(manager.get_all_students())
-
-
-@app.route('/api/add-student', methods=['POST'])
-def add_student():
-    """Add a new student."""
-    data = request.json
-    name = data.get('name', '').strip()
-    total_parts = int(data.get('total_parts', 30))
-    
-    success, message = manager.add_student(name, total_parts)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/mark-attendance', methods=['POST'])
-def mark_attendance():
-    """Mark attendance."""
-    data = request.json
-    name = data.get('name', '').strip()
-    date = data.get('date', None)
-    
-    success, message = manager.mark_attendance(name, date)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/update-progress', methods=['POST'])
-def update_progress():
-    """Update student progress."""
-    data = request.json
-    name = data.get('name', '').strip()
-    new_part = data.get('new_part', 0)
-    
-    success, message = manager.update_progress(name, new_part)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/assign-role', methods=['POST'])
-def assign_role():
-    """Assign a role."""
-    data = request.json
-    name = data.get('name', '').strip()
-    role = data.get('role', '').strip()
-    
-    success, message = manager.assign_role(name, role)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/add-note', methods=['POST'])
-def add_note():
-    """Add a note."""
-    data = request.json
-    name = data.get('name', '').strip()
-    note_type = data.get('note_type', '').strip()
-    content = data.get('content', '').strip()
-    
-    success, message = manager.add_note(name, note_type, content)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/profile/<name>', methods=['GET'])
-def get_profile(name):
-    """Get student profile."""
-    profile = manager.view_profile(name)
-    if profile:
-        return jsonify(profile)
-    return jsonify({'error': 'Student not found'}), 404
-
-
-@app.route('/api/summary', methods=['GET'])
-def get_summary():
-    """Get summary data."""
-    data = manager.get_summary()
-    stats = manager.get_statistics()
-    return jsonify({'students': data, 'statistics': stats})
-
-
-@app.route('/api/remove-student', methods=['POST'])
-def remove_student():
-    """Remove a student."""
-    data = request.json
-    name = data.get('name', '').strip()
-    
-    success, message = manager.remove_student(name)
-    return jsonify({'success': success, 'message': message})
-
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+# --- 4. إدارة المسؤوليات ---
+elif choice == "⚙️ إدارة المسؤوليات":
+    st.subheader("⚙️ تعيين مسؤوليات خاصة")
+    if students:
+        name = st.selectbox("اختر الطالب لتغيير مسؤوليته", list(students.keys()))
+        roles_list = ['طالب', 'مساعد مراجع', 'قائد مجموعة', 'مراقب صلاة', 'مسؤول حضور']
+        current_role = students[name]['role']
+        new_role = st.selectbox(f"المسؤولية الحالية: {current_role}", roles_list)
+        
+        if st.button("تحديث المسؤولية"):
+            students[name]['role'] = new_role
+            save_data(students)
+            st.success(f"تم تغيير دور {name} إلى {new_role}")
+    else:
+        st.info("لا يوجد طلاب.")
