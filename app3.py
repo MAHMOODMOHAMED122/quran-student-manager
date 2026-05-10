@@ -524,7 +524,7 @@ with tab5:
 
 # التبويب 6: الحضور والملاحظات
         elif page == "📅 الحضور والملاحظات":
-        st.header("📅 الحضور والملاحظات")
+         st.header("📅 الحضور والملاحظات")
     
     students = manager.get_all_students()
     if students:
