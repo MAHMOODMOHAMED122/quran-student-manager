@@ -523,7 +523,7 @@ with tab5:
         st.warning("⚠️ لا يوجد طلاب! أضف طالب جديد أولاً.")
 
 # التبويب 6: الحضور والملاحظات
-     elif page == "📅 الحضور والملاحظات":
+    elif page == "📅 الحضور والملاحظات":
          st.header("📅 الحضور والملاحظات")
     
     students = manager.get_all_students()
