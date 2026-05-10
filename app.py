@@ -1,9 +1,44 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
 import json
 import os
 from datetime import datetime
+import pandas as pd
 
-app = Flask(__name__)
+# Page config
+st.set_page_config(
+    page_title="🕌 Quran School Manager",
+    page_icon="🕌",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# Custom CSS
+st.markdown("""
+    <style>
+    .main {
+        padding: 0rem 1rem;
+    }
+    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+        font-size: 1.2em;
+    }
+    .success-box {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        margin-bottom: 1rem;
+    }
+    .error-box {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+        margin-bottom: 1rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 class QuranSchoolManager:
     """Manages Quran school student records and progress."""
@@ -162,13 +197,13 @@ class QuranSchoolManager:
             role = student['role']
             
             data.append({
-                'name': name,
-                'current': current,
-                'total': total,
-                'remaining': remaining,
-                'progress': f"{progress:.1f}",
-                'attendance': attendance,
-                'role': role
+                'Name': name,
+                'Current': current,
+                'Total': total,
+                'Remaining': remaining,
+                'Progress %': f"{progress:.1f}",
+                'Attendance': attendance,
+                'Role': role
             })
         
         return data
@@ -219,104 +254,239 @@ class QuranSchoolManager:
         return None
 
 
-# Initialize manager
-manager = QuranSchoolManager()
+# Initialize session state
+if 'manager' not in st.session_state:
+    st.session_state.manager = QuranSchoolManager()
 
+manager = st.session_state.manager
 
-@app.route('/')
-def index():
-    """Serve the main page."""
-    return render_template('index.html')
+# Header
+st.markdown("# 🕌 Quran School Management System")
+st.markdown("**Professional Student Management System for Quran Memorization**")
+st.divider()
 
+# Main Tabs
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    "📊 Dashboard",
+    "➕ Add Student",
+    "📅 Attendance",
+    "📈 Progress",
+    "🎯 Roles",
+    "📝 Notes",
+    "👤 Profile",
+    "🗑️ Remove"
+])
 
-@app.route('/api/students', methods=['GET'])
-def get_students():
-    """Get all student names."""
-    return jsonify(manager.get_all_students())
-
-
-@app.route('/api/add-student', methods=['POST'])
-def add_student():
-    """Add a new student."""
-    data = request.json
-    name = data.get('name', '').strip()
-    total_parts = int(data.get('total_parts', 30))
+# TAB 1: Dashboard
+with tab1:
+    st.subheader("📊 Dashboard Summary")
     
-    success, message = manager.add_student(name, total_parts)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/mark-attendance', methods=['POST'])
-def mark_attendance():
-    """Mark attendance."""
-    data = request.json
-    name = data.get('name', '').strip()
-    date = data.get('date', None)
-    
-    success, message = manager.mark_attendance(name, date)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/update-progress', methods=['POST'])
-def update_progress():
-    """Update student progress."""
-    data = request.json
-    name = data.get('name', '').strip()
-    new_part = data.get('new_part', 0)
-    
-    success, message = manager.update_progress(name, new_part)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/assign-role', methods=['POST'])
-def assign_role():
-    """Assign a role."""
-    data = request.json
-    name = data.get('name', '').strip()
-    role = data.get('role', '').strip()
-    
-    success, message = manager.assign_role(name, role)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/add-note', methods=['POST'])
-def add_note():
-    """Add a note."""
-    data = request.json
-    name = data.get('name', '').strip()
-    note_type = data.get('note_type', '').strip()
-    content = data.get('content', '').strip()
-    
-    success, message = manager.add_note(name, note_type, content)
-    return jsonify({'success': success, 'message': message})
-
-
-@app.route('/api/profile/<name>', methods=['GET'])
-def get_profile(name):
-    """Get student profile."""
-    profile = manager.view_profile(name)
-    if profile:
-        return jsonify(profile)
-    return jsonify({'error': 'Student not found'}), 404
-
-
-@app.route('/api/summary', methods=['GET'])
-def get_summary():
-    """Get summary data."""
-    data = manager.get_summary()
     stats = manager.get_statistics()
-    return jsonify({'students': data, 'statistics': stats})
-
-
-@app.route('/api/remove-student', methods=['POST'])
-def remove_student():
-    """Remove a student."""
-    data = request.json
-    name = data.get('name', '').strip()
+    col1, col2, col3, col4 = st.columns(4)
     
-    success, message = manager.remove_student(name)
-    return jsonify({'success': success, 'message': message})
+    with col1:
+        st.metric("Total Students", stats['total_students'])
+    with col2:
+        st.metric("Average Progress", f"{stats['avg_progress']}%")
+    with col3:
+        st.metric("Completed", stats['completed'])
+    with col4:
+        st.metric("Junior Assistants", stats['junior_assistants'])
+    
+    st.divider()
+    
+    summary_data = manager.get_summary()
+    if summary_data:
+        df = pd.DataFrame(summary_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("📌 No students yet. Add a student to get started!")
 
+# TAB 2: Add Student
+with tab2:
+    st.subheader("➕ Add New Student")
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        name = st.text_input("Student Name", placeholder="Enter student name", key="add_name")
+    with col2:
+        total_parts = st.number_input("Total Parts", value=30, min_value=1, key="add_parts")
+    
+    if st.button("Add Student", type="primary", use_container_width=True):
+        if name:
+            success, message = manager.add_student(name, total_parts)
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+        else:
+            st.error("❌ Please enter a student name")
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+# TAB 3: Attendance
+with tab3:
+    st.subheader("📅 Mark Attendance")
+    
+    students = manager.get_all_students()
+    if students:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            selected_student = st.selectbox("Select Student", students, key="att_student")
+        with col2:
+            att_date = st.date_input("Date (leave for today)", key="att_date")
+        
+        if st.button("Mark Present", type="primary", use_container_width=True):
+            date_str = att_date.strftime('%Y-%m-%d')
+            success, message = manager.mark_attendance(selected_student, date_str)
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.warning(message)
+    else:
+        st.info("📌 No students yet. Add a student first!")
+
+# TAB 4: Progress
+with tab4:
+    st.subheader("📈 Update Progress")
+    
+    students = manager.get_all_students()
+    if students:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            prog_student = st.selectbox("Select Student", students, key="prog_student")
+        with col2:
+            new_part = st.number_input("Current Part", value=0, min_value=0, max_value=30, key="prog_part")
+        
+        if st.button("Update Progress", type="primary", use_container_width=True):
+            success, message = manager.update_progress(prog_student, new_part)
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+    else:
+        st.info("📌 No students yet. Add a student first!")
+
+# TAB 5: Roles
+with tab5:
+    st.subheader("🎯 Assign Role")
+    
+    students = manager.get_all_students()
+    if students:
+        col1, col2 = st.columns(2)
+        with col1:
+            role_student = st.selectbox("Select Student", students, key="role_student")
+        with col2:
+            role = st.selectbox(
+                "Select Role",
+                ["Student", "Junior Assistant", "Group Leader", "Prayer Monitor", "Recitation Assistant"],
+                key="role_select"
+            )
+        
+        if st.button("Assign Role", type="primary", use_container_width=True):
+            success, message = manager.assign_role(role_student, role)
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+    else:
+        st.info("📌 No students yet. Add a student first!")
+
+# TAB 6: Notes
+with tab6:
+    st.subheader("📝 Add Note")
+    
+    students = manager.get_all_students()
+    if students:
+        col1, col2 = st.columns(2)
+        with col1:
+            note_student = st.selectbox("Select Student", students, key="note_student")
+        with col2:
+            note_type = st.selectbox(
+                "Note Type",
+                ["Strengths", "Modification", "General", "Attendance", "Behavior"],
+                key="note_type"
+            )
+        
+        note_content = st.text_area("Note Content", placeholder="Enter your observation...", key="note_content")
+        
+        if st.button("Add Note", type="primary", use_container_width=True):
+            if note_content:
+                success, message = manager.add_note(note_student, note_type, note_content)
+                if success:
+                    st.success(message)
+                    st.rerun()
+                else:
+                    st.error(message)
+            else:
+                st.error("❌ Please enter note content")
+    else:
+        st.info("📌 No students yet. Add a student first!")
+
+# TAB 7: Profile
+with tab7:
+    st.subheader("👤 View Profile")
+    
+    students = manager.get_all_students()
+    if students:
+        profile_student = st.selectbox("Select Student", students, key="profile_student")
+        
+        if st.button("Load Profile", type="primary", use_container_width=True):
+            profile = manager.view_profile(profile_student)
+            if profile:
+                # Profile header
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Role", profile['role'])
+                with col2:
+                    st.metric("Current/Total", f"{profile['current_part']}/{profile['total_parts']}")
+                with col3:
+                    st.metric("Remaining", profile['remaining'])
+                with col4:
+                    st.metric("Progress", f"{profile['progress']}%")
+                
+                # Progress bar
+                progress = float(profile['progress']) / 100
+                st.progress(progress, text=f"{profile['progress']}%")
+                
+                # Attendance
+                st.subheader("📅 Recent Attendance")
+                if profile['attendance']:
+                    for date in profile['attendance']:
+                        st.write(f"✓ {date}")
+                else:
+                    st.info("No attendance recorded")
+                
+                # Notes
+                if profile['notes']:
+                    st.subheader("📝 Recent Notes")
+                    for note in profile['notes']:
+                        date = note['date'][:10]
+                        with st.expander(f"[{date}] {note['type']}"):
+                            st.write(note['content'])
+    else:
+        st.info("📌 No students yet. Add a student first!")
+
+# TAB 8: Remove Student
+with tab8:
+    st.subheader("🗑️ Remove Student")
+    
+    students = manager.get_all_students()
+    if students:
+        remove_student = st.selectbox("Select Student to Remove", students, key="remove_student")
+        
+        if st.button("Remove Student", type="secondary", use_container_width=True):
+            success, message = manager.remove_student(remove_student)
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+    else:
+        st.info("📌 No students to remove.")
+
+# Footer
+st.divider()
+st.markdown("**🕌 Quran School Management System** | All data is automatically saved | Made for Quran educators")
