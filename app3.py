@@ -6,7 +6,7 @@ from collections import defaultdict
 
 # إعدادات الصفحة
 st.set_page_config(
-    page_title="🕌 نظام إدارة طلاب القرآن",
+page_title="🕌 نظام إدارة طلاب القرآن",
     page_icon="🕌",
     layout="wide",
     initial_sidebar_state="expanded"
